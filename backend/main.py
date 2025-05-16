@@ -4,12 +4,12 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 import torch
 from torchvision import models, transforms
-import io
 import torch.nn.functional as F
+import io
 
 app = FastAPI()
 
-# Allow frontend access
+# Allow frontend access (adjust domains in production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,7 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Common transform
+# Basic health check
+@app.get("/")
+async def root():
+    return {"message": "Smart Image Classifier API is running."}
+
+# Image transform
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -26,7 +31,7 @@ transform = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-# Load general model (ImageNet)
+# Load general ImageNet model
 general_model = models.resnet50(pretrained=True)
 general_model.eval()
 with open("imagenet_classes.txt") as f:
@@ -35,10 +40,10 @@ with open("imagenet_classes.txt") as f:
 # Load custom model
 checkpoint = torch.load("custom_model.pth", map_location=torch.device("cpu"))
 custom_model = models.resnet18(pretrained=False)
-custom_model.fc = torch.nn.Linear(custom_model.fc.in_features, len(checkpoint['class_names']))
-custom_model.load_state_dict(checkpoint['model_state_dict'])
+custom_model.fc = torch.nn.Linear(custom_model.fc.in_features, len(checkpoint.get('class_names', [])))
+custom_model.load_state_dict(checkpoint.get('model_state_dict'))
 custom_model.eval()
-custom_labels = checkpoint['class_names']
+custom_labels = checkpoint.get('class_names', [])
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
@@ -47,31 +52,31 @@ async def predict(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(contents)).convert("RGB")
         input_tensor = transform(image).unsqueeze(0)
 
-        # General model prediction
+        # Predict with general model
         with torch.no_grad():
-            general_output = general_model(input_tensor)
-            general_probs = F.softmax(general_output, dim=1)
-            gen_conf, gen_idx = general_probs[0].max(0)
+            gen_output = general_model(input_tensor)
+            gen_probs = F.softmax(gen_output, dim=1)
+            gen_conf, gen_idx = gen_probs[0].max(0)
             general_result = {
                 "label": general_labels[gen_idx.item()],
                 "confidence": round(gen_conf.item(), 3)
             }
 
-        # Custom model prediction
+        # Predict with custom model
         with torch.no_grad():
-            custom_output = custom_model(input_tensor)
-            custom_probs = F.softmax(custom_output, dim=1)
-            cust_conf, cust_idx = custom_probs[0].max(0)
+            cust_output = custom_model(input_tensor)
+            cust_probs = F.softmax(cust_output, dim=1)
+            cust_conf, cust_idx = cust_probs[0].max(0)
             custom_result = {
                 "label": custom_labels[cust_idx.item()],
                 "confidence": round(cust_conf.item(), 3)
             }
 
-        # Optional: Pick best (confidence-based)
-        if gen_conf > cust_conf:
-            best = {"source": "general", **general_result}
-        else:
-            best = {"source": "custom", **custom_result}
+        # Best prediction
+        best = {
+            "source": "general" if gen_conf > cust_conf else "custom",
+            **(general_result if gen_conf > cust_conf else custom_result)
+        }
 
         return JSONResponse({
             "best_prediction": best,
@@ -80,4 +85,7 @@ async def predict(file: UploadFile = File(...)):
         })
 
     except Exception as e:
-        return JSONResponse({"error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Prediction failed: {str(e)}"}
+        )

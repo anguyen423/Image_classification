@@ -2,10 +2,11 @@ services:
   - type: web
     name: image-classifier-app
     env: python
-    plan: free
     buildCommand: pip install -r backend/requirements.txt
     startCommand: bash backend/start.sh
-    envVars:
-      - key: PYTHONUNBUFFERED
-        value: '1'
-    staticPublishPath: frontend
+    plan: free
+    runtime: python
+    region: oregon
+    branch: main
+    autoDeploy: true
+    rootDir: .
