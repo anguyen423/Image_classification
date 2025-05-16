@@ -1,41 +1,103 @@
 <!DOCTYPE html>
-<html>
-<head><title>Smart Image Classifier</title></head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Image Classifier</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      text-align: center;
+    }
+    input[type="file"] {
+      margin-top: 20px;
+    }
+    img {
+      margin-top: 20px;
+      max-width: 100%;
+      height: auto;
+    }
+    .results {
+      margin-top: 30px;
+      text-align: left;
+    }
+  </style>
+</head>
 <body>
-  <h2>Upload an Image</h2>
-  <input type="file" id="imageInput" />
+  <h1>Smart Image Classifier</h1>
+  <p>Upload an image to get predictions from both models.</p>
+
+  <input type="file" id="imageInput" accept="image/*" />
+  <br>
   <button onclick="submitImage()">Submit</button>
 
-  <h3>Best Match:</h3>
-  <p id="best"></p>
+  <div id="previewContainer">
+    <h3>Image Preview:</h3>
+    <img id="preview" src="#" alt="Image preview will appear here" style="display: none;" />
+  </div>
 
-  <h3>General Model:</h3>
-  <p id="general"></p>
+  <div class="results">
+    <h3>🔍 Best Match:</h3>
+    <p id="best">-</p>
 
-  <h3>Custom Model:</h3>
-  <p id="custom"></p>
+    <h3>🧠 General Model:</h3>
+    <p id="general">-</p>
+
+    <h3>🎯 Custom Model:</h3>
+    <p id="custom">-</p>
+  </div>
 
   <script>
+    const preview = document.getElementById('preview');
+    const input = document.getElementById('imageInput');
+
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          preview.src = reader.result;
+          preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
     async function submitImage() {
-      const file = document.getElementById("imageInput").files[0];
-      if (!file) return alert("Please choose a file");
+      const file = input.files[0];
+      if (!file) {
+        alert("Please select an image.");
+        return;
+      }
 
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("http://localhost:8000/predict", {
-        method: "POST",
-        body: formData
-      });
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          body: formData
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (data.error) {
-        document.getElementById("best").textContent = data.error;
-      } else {
-        document.getElementById("best").textContent = `${data.best_prediction.label} (${data.best_prediction.source}, ${data.best_prediction.confidence})`;
-        document.getElementById("general").textContent = `${data.general_model.label} (${data.general_model.confidence})`;
-        document.getElementById("custom").textContent = `${data.custom_model.label} (${data.custom_model.confidence})`;
+        if (data.error) {
+          document.getElementById("best").textContent = `❌ Error: ${data.error}`;
+          return;
+        }
+
+        document.getElementById("best").textContent =
+          `${data.best_prediction.label} (from ${data.best_prediction.source}, confidence: ${data.best_prediction.confidence})`;
+
+        document.getElementById("general").textContent =
+          `${data.general_model.label} (confidence: ${data.general_model.confidence})`;
+
+        document.getElementById("custom").textContent =
+          `${data.custom_model.label} (confidence: ${data.custom_model.confidence})`;
+
+      } catch (error) {
+        document.getElementById("best").textContent = `❌ Network error: ${error.message}`;
       }
     }
   </script>

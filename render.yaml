@@ -9,4 +9,3 @@ services:
       - key: PYTHONUNBUFFERED
         value: '1'
     staticPublishPath: frontend
-    repo: <your GitHub repo URL here>
